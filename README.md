@@ -1,5 +1,10 @@
-# PyTorch-YOLOv3
+# PyTorch-gaussian-YOLOv3-1D
 A minimal PyTorch implementation of YOLOv3, with support for training, inference and evaluation.
+
+# ToDo
+[ ] Enabling Multi-GPU training
+[ ] Adding the implementation of the "gaussian" part from the following paper: https://arxiv.org/abs/1904.04620.
+[ ] Changing the dataset from the COCO to more appropriate one.
 
 ## Installation
 ##### Clone and install requirements
