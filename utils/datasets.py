@@ -11,6 +11,7 @@ from utils.augmentations import horisontal_flip
 from torch.utils.data import Dataset
 import torchvision.transforms as transforms
 
+import cv2
 
 def pad_to_square(img, pad_value):
     c, h, w = img.shape
@@ -83,7 +84,8 @@ class ListDataset(Dataset):
         img_path = self.img_files[index % len(self.img_files)].rstrip()
 
         # Extract image as PyTorch tensor
-        img = transforms.ToTensor()(Image.open(img_path).convert('RGB'))
+        # img = transforms.ToTensor()(Image.open(img_path).convert('RGB'))
+        img = transforms.ToTensor()(cv2.cvtColor(cv2.imread(img_path), cv2.COLOR_BGR2RGB))
 
         # Handle images with less than three channels
         if len(img.shape) != 3:
