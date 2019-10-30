@@ -1,5 +1,5 @@
 # PyTorch-gaussian-YOLOv3-1D
-This reopsitory is forked from https://github.com/eriklindernoren/PyTorch-YOLOv3 and heavily based on it; however, this repo aims the following three parts.
+This reopsitory is forked from https://github.com/eriklindernoren/PyTorch-YOLOv3 and heavily based on it; however, this one aims the following three parts.
 1) Adding 1D array support
 2) Enabling multi-gpu training support
 3) Utilize the uncertainity of the Bounding Boxes (for 2D) or Bouning Ranges (for 1D) as in this paper: https://arxiv.org/abs/1904.04620
