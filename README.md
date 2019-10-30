@@ -1,5 +1,8 @@
 # PyTorch-gaussian-YOLOv3-1D
-A minimal PyTorch implementation of YOLOv3, with support for training, inference and evaluation.
+This reopsitory is forked from https://github.com/eriklindernoren/PyTorch-YOLOv3 and heavily based on it; however, this repo aims the following three parts.
+1) Adding 1D array support
+2) Enabling multi-gpu training support
+3) Utilize the uncertainity of the Bounding Boxes (for 2D) or Bouning Ranges (for 1D) as in this paper: https://arxiv.org/abs/1904.04620
 
 # ToDo
 [ ] Enabling Multi-GPU training
@@ -14,7 +17,7 @@ A minimal PyTorch implementation of YOLOv3, with support for training, inference
     $ cd PyTorch-YOLOv3/
     $ sudo pip3 install -r requirements.txt
 
-##### Download pretrained weights
+##### Download pretrained weights (for only 2D)
     $ cd weights/
     $ bash download_weights.sh
 
