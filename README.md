@@ -3,7 +3,8 @@ This reopsitory was forked from https://github.com/eriklindernoren/PyTorch-YOLOv
 1) Adding 1D support (for event detection in a supervised manner like object detection in 2D) 
 2) Enabling multi-gpu support
 3) Utilizing the prediction uncertainities of the Bounding Boxes (for 2D) or Bouning Ranges (for 1D) as described in this paper: https://arxiv.org/abs/1904.04620
-Now, this is under developpment.
+
+Now, this repository is under developpment.
 
 # ToDo
 [x] 1D support
