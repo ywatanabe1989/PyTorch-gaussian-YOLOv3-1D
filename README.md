@@ -6,6 +6,7 @@ This reopsitory is forked from https://github.com/eriklindernoren/PyTorch-YOLOv3
 
 # ToDo
 [x] 1D support
+
     Please use "config/yolov3_1d.cfg", "train_1d.py" and so on.
 
 [ ] Enabling Multi-GPU training
