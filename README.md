@@ -19,7 +19,8 @@ Now, this repository is under developpment.
 [ ] Adding the "gaussian" part from the following paper: https://arxiv.org/abs/1904.04620.
 
 [ ] Changing the dataset from the COCO to more appropriate one.
-Candidates list
+
+- 1D dataset candidates
 1) CRCNS hc-19 (http://crcns.org/data-sets/hc/hc-19/about-hc-19)
 2) The Spoken Wikipedia Corpora (http://nats.gitlab.io/swc/)
 
