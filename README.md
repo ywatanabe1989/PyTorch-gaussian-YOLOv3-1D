@@ -9,7 +9,8 @@ Now, this repository is under developpment.
 # ToDo
 [x] 1D support
 
-    Please use "config/yolov3_1d.cfg", "train_1d.py" and so on.
+    $ python3 train.py --model_def config/yolov3_1d.cfg
+    This arguments leads to load not only the 1D model but also proper functions and data for 1D.
 
 [] Enabling multi-GPU support
 
@@ -18,7 +19,7 @@ Now, this repository is under developpment.
 [ ] Adding the "gaussian" part from the following paper: https://arxiv.org/abs/1904.04620.
 
 [ ] Changing the dataset from the COCO to more appropriate one.
-Candidates
+Candidates list
 1) CRCNS hc-19 (http://crcns.org/data-sets/hc/hc-19/about-hc-19)
 2) The Spoken Wikipedia Corpora (http://nats.gitlab.io/swc/)
 
