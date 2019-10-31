@@ -10,7 +10,7 @@ Now, this repository is under developpment.
 [x] 1D support
 
     $ python3 train.py --model_def config/yolov3_1d.cfg
-    This arguments leads to load not only the 1D model but also proper functions and data for 1D.
+    (This command line argument including "_1d" leads to load not only the 1D model but also proper functions and data for 1D.)
 
 [] Enabling multi-GPU support
 
