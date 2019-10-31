@@ -24,7 +24,9 @@ Now, this repository is under developpment.
 1) CRCNS hc-19 (http://crcns.org/data-sets/hc/hc-19/about-hc-19)
 2) The Spoken Wikipedia Corpora (http://nats.gitlab.io/swc/)
 
------ Documentation below is about 2D ----- 
+
+
+----- Documentation below is about 2D from the original repository ----- 
 ## Installation
 ##### Clone and install requirements
     $ git clone https://github.com/ywatanabe1989/PyTorch-YOLOv3
