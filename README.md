@@ -27,7 +27,7 @@ Now, this repository is under developpment.
 
 
 ---
-(Documentation below is about 2D from the original repository)
+(Documentation below was excerpted from the original repository and is about 2D YOLO v3)
 ---
 
 ## Installation
