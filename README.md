@@ -26,7 +26,10 @@ Now, this repository is under developpment.
 
 
 
------ Documentation below is about 2D from the original repository ----- 
+---
+Documentation below is about 2D from the original repository
+---
+
 ## Installation
 ##### Clone and install requirements
     $ git clone https://github.com/ywatanabe1989/PyTorch-YOLOv3
