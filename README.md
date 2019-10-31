@@ -1,5 +1,5 @@
 # PyTorch-gaussian-YOLOv3-1D
-This reopsitory was forked from https://github.com/eriklindernoren/PyTorch-YOLOv3 and is based on that repo; however, this one aims the following three parts.
+This reopsitory was forked from https://github.com/eriklindernoren/PyTorch-YOLOv3 and is based on that repo; however, this one mainly aims the following three parts.
 1) Adding 1D support (for event detection in a supervised manner like object detection in 2D) 
 2) Enabling multi-gpu support
 3) Utilizing the prediction uncertainities of the Bounding Boxes (for 2D) or Bouning Ranges (for 1D) as described in this paper: https://arxiv.org/abs/1904.04620
@@ -11,7 +11,9 @@ Now, this repository is under developpment.
 
     Please use "config/yolov3_1d.cfg", "train_1d.py" and so on.
 
-[ ] Enabling multi-GPU support
+[] Enabling multi-GPU support
+
+[ ] Enabling fp16 support
 
 [ ] Adding the "gaussian" part from the following paper: https://arxiv.org/abs/1904.04620.
 
