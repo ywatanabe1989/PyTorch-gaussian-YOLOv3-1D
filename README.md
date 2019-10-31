@@ -27,7 +27,7 @@ Now, this repository is under developpment.
 
 
 ---
-Documentation below is about 2D from the original repository
+(Documentation below is about 2D from the original repository)
 ---
 
 ## Installation
