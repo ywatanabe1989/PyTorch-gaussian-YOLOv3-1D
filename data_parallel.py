@@ -7,10 +7,12 @@ from itertools import chain
 # from .replicate import replicate
 # from .parallel_apply import parallel_apply
 from torch.nn.modules import Module
-from torch.nn.parallel.scatter_gather import scatter_kwargs, gather
+from torch.nn.parallel.scatter_gather import scatter, gather # scatter_kwargs
 from torch.nn.parallel.replicate import replicate
 from torch.nn.parallel.parallel_apply import parallel_apply
 from torch.cuda._utils import _get_device_index
+
+import numpy as np
 # torch.nn.parallel.data_parallel
 # torch.nn.parallel.data_parallel.DataParallel
 
@@ -135,15 +137,18 @@ class DataParallel(Module):
         self.output_device = _get_device_index(output_device, True)
         self.src_device_obj = torch.device("cuda:{}".format(self.device_ids[0]))
 
+        self.n_device = len(device_ids)
+        self.seen = 0
+
         _check_balance(self.device_ids)
 
         if len(self.device_ids) == 1:
             self.module.cuda(device_ids[0])
 
-    # def forward(self, *inputs, **kwargs):
-    def forward(self, scattered_inputs, kwargs_tup=None):
+    def forward(self, imgs, targets=None):
+
         if not self.device_ids:
-            return self.module(*inputs, **kwargs)
+            return self.module(imgs, targets=targets)
 
         for t in chain(self.module.parameters(), self.module.buffers()):
             if t.device != self.src_device_obj:
@@ -151,28 +156,57 @@ class DataParallel(Module):
                                    "on device {} (device_ids[0]) but found one of "
                                    "them on device: {}".format(self.src_device_obj, t.device))
 
-        # inputs, kwargs = self.scatter(inputs, kwargs, self.device_ids)
-        if len(self.device_ids) == 1: # fixme
-            return self.module(*inputs[0], **kwargs[0])
-        replicas = self.replicate(self.module, self.device_ids[:len(scattered_inputs)])
+        if self.n_device == 1:
+            return self.module(imgs, targets=targets)
 
-        # replicas_outputs = nn.parallel.parallel_apply(replicas, scattered_imgs, kwargs_tup=kwargs_tup)
-        # outputs = self.parallel_apply(replicas, inputs, kwargs)
-        replicas_outputs = self.parallel_apply(replicas, scattered_inputs, kwargs_tup=kwargs_tup)
-        # return self.gather(outputs, self.output_device)
-        return replicas_outputs
+        if not targets is None:
+          bs_per_device = int( len(imgs) / self.n_device)
+          targets_list = []
+          for i_device in range(self.n_device):
+            targets_for_a_device_mask = (bs_per_device*i_device <= targets[:,0]) & (targets[:,0] < bs_per_device*(i_device+1))
+            targets_for_a_device = targets[targets_for_a_device_mask]
+            targets_for_a_device[:,0] -= bs_per_device*i_device
+            targets_list.append({'targets':targets_for_a_device.cuda(i_device)})
+          kwargs_tup = tuple(targets_list)
+        else:
+          kwargs_tup = None
+
+        imgs = self.scatter(imgs, self.device_ids)
+
+        self.replicas = self.replicate(self.module, self.device_ids[:len(imgs)])
+
+        replicas_outputs = self.parallel_apply(self.replicas, imgs, kwargs_tup=kwargs_tup)
+        # self.yolo_layers = [yolo_layer for replica in self.replicas for yolo_layer in replica.yolo_layers] # fixme
+        self.yolo_layers = [replica.yolo_layers for replica in self.replicas] # fixme
+
+        '''
+        self.module(imgs[0], targets=kwargs_tup[0]['targets'])
+        self.module.yolo_layers[0].metrics
+        '''
+
+        if not targets is None:
+          replicas_losses = [replicas_outputs[i_device][0] for i_device in range(self.n_device)]
+          loss_tot = self.gather(replicas_losses, self.output_device).mean()
+          outputs = np.vstack([replicas_outputs[i_device][1] for i_device in range(self.n_device)])
+          metrics = [replicas_outputs[i_device][2] for i_device in range(self.n_device)]
+          return loss_tot, outputs, metrics
+        else:
+          outputs = np.vstack([replicas_outputs[i_device][0] for i_device in range(self.n_device)])
+          return outputs
 
     def replicate(self, module, device_ids):
         return replicate(module, device_ids, not torch.is_grad_enabled())
 
     # def scatter(self, inputs, kwargs, device_ids):
     #     return scatter_kwargs(inputs, kwargs, device_ids, dim=self.dim)
+    def scatter(self, inputs, device_ids):
+        return scatter(inputs, device_ids)
 
     def parallel_apply(self, replicas, inputs, kwargs_tup=None):
         return parallel_apply(replicas, inputs, kwargs_tup=kwargs_tup, devices=self.device_ids[:len(replicas)])
 
-    # def gather(self, outputs, output_device):
-    #     return gather(outputs, output_device, dim=self.dim)
+    def gather(self, outputs, output_device):
+        return gather(outputs, output_device, dim=self.dim)
 
 
 def data_parallel(module, inputs, device_ids=None, output_device=None, dim=0, module_kwargs=None):
