@@ -78,7 +78,7 @@ def create_modules(module_defs):
             modules.add_module(f"shortcut_{module_i}", EmptyLayer())
 
         elif module_def["type"] == "yolo":
-            anchor_idxs = [int(x) for x in module_def["mask"].split(",")] # == mask
+            anchor_idxs = [int(x) for x in module_def["mask"].split(",")]
             # Extract anchors
             anchors = [int(x) for x in module_def["anchors"].split(",")]
             anchors = [(anchors[i], anchors[i + 1]) for i in range(0, len(anchors), 2)]
@@ -132,23 +132,26 @@ class YOLOLayer(nn.Module):
         self.img_dim = img_dim
         self.grid_size = 0
 
-    def compute_grid_offsets(self, grid_size, cuda=True):
+    def compute_grid_offsets(self, grid_size, cuda=True, device_id=None):
         self.grid_size = grid_size
         g = self.grid_size
         FloatTensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
         self.stride = self.img_dim / self.grid_size
         # Calculate offsets for each grid
         self.grid_x = torch.arange(g).view([1, 1, g]).type(FloatTensor)
+        if cuda:
+            self.grid_x = self.grid_x.cuda(device_id)
         # self.scaled_anchors = FloatTensor([(a_w / self.stride, np.nan) for a_w, _ in self.anchors])
-        self.scaled_anchors = FloatTensor([(a_w / self.stride,) for a_w in self.anchors])
+        self.scaled_anchors = FloatTensor([(a_w / self.stride,) for a_w in self.anchors], device=device_id)
         self.anchor_w = self.scaled_anchors[:, 0:1].view((1, self.num_anchors, 1)) # ,1
 
     def forward(self, x, targets=None, img_dim=None):
+        device_id = x.device.index
 
         # Tensors for cuda support
         FloatTensor = torch.cuda.FloatTensor if x.is_cuda else torch.FloatTensor
         LongTensor = torch.cuda.LongTensor if x.is_cuda else torch.LongTensor
-        ByteTensor = torch.cuda.ByteTensor if x.is_cuda else torch.ByteTensor
+        BoolTensor = torch.cuda.BoolTensor if x.is_cuda else torch.BoolTensor
 
         self.img_dim = img_dim
         num_samples = x.size(0)
@@ -168,10 +171,10 @@ class YOLOLayer(nn.Module):
 
         # If grid size does not match current we compute new offsets
         if grid_size != self.grid_size:
-            self.compute_grid_offsets(grid_size, cuda=x.is_cuda)
+            self.compute_grid_offsets(grid_size, cuda=x.is_cuda, device_id=device_id)
 
         # Add offset and scale with anchors
-        pred_boxes = FloatTensor(prediction[..., :2].shape)
+        pred_boxes = FloatTensor(prediction[..., :2].shape, device=device_id)
         pred_boxes[..., 0] = x.data + self.grid_x
         pred_boxes[..., 1] = torch.exp(w.data) * self.anchor_w
 
@@ -230,13 +233,13 @@ class YOLOLayer(nn.Module):
                 "conf_noobj": to_cpu(conf_noobj).item(),
                 "grid_size": grid_size,
             }
-            return output, total_loss
+            return output, total_loss, self.metrics
 
 
 class Darknet(nn.Module):
     """YOLOv3 object detection model"""
 
-    def __init__(self, config_path, input_len=416, n_coordinates=2):
+    def __init__(self, config_path, input_len=416):
         super(Darknet, self).__init__()
         '''
         config_path = opt.model_def
@@ -248,14 +251,13 @@ class Darknet(nn.Module):
         self.input_len = input_len
         self.seen = 0
         self.header_info = np.array([0, 0, 0, self.seen, 0], dtype=np.int32)
-        self.n_coordinates = n_coordinates
 
     def forward(self, x, targets=None):
         # if targets is not None:
         #   targets = targets[~torch.isnan(targets)].view(-1, self.n_coordinates+2)
         img_dim = x.shape[2]
         loss = 0
-        layer_outputs, yolo_outputs = [], []
+        layer_outputs, yolo_outputs, yolo_metrics = [], [], []
         for i, (module_def, module) in enumerate(zip(self.module_defs, self.module_list)):
             if module_def["type"] in ["convolutional", "upsample", "maxpool"]:
                 x = module(x)
@@ -265,12 +267,13 @@ class Darknet(nn.Module):
                 layer_i = int(module_def["from"])
                 x = layer_outputs[-1] + layer_outputs[layer_i]
             elif module_def["type"] == "yolo":
-                x, layer_loss = module[0](x, targets, img_dim)
+                x, layer_loss, layer_metrics = module[0](x, targets, img_dim)
                 loss += layer_loss
                 yolo_outputs.append(x)
+                yolo_metrics.append(layer_metrics)
             layer_outputs.append(x)
         yolo_outputs = to_cpu(torch.cat(yolo_outputs, 1))
-        return yolo_outputs if targets is None else (loss, yolo_outputs)
+        return yolo_outputs if targets is None else (loss, yolo_outputs, yolo_metrics)
 
     def load_darknet_weights(self, weights_path):
         """Parses and loads the weights stored in 'weights_path'"""
