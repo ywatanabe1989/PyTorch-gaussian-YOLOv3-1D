@@ -14,6 +14,8 @@ Now, this repository is under developpment.
 
 [x] Enabling multi-GPU support
 
+    $ python train.py --n_gpu 4
+
 [ ] Enabling fp16 support
 
 [ ] Adding the "gaussian" part from the following paper: https://arxiv.org/abs/1904.04620.
