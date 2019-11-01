@@ -28,7 +28,7 @@ from data_parallel import DataParallel
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--epochs", type=int, default=100, help="number of epochs")
-    parser.add_argument("--batch_size", type=int, default=8, help="size of each image batch") # 512
+    parser.add_argument("--batch_size", type=int, default=10, help="size of each image batch") # 512
     parser.add_argument("--gradient_accumulations", type=int, default=2, help="number of gradient accums before step")
     # parser.add_argument("--model_def", type=str, default="config/yolov3_1d.cfg", help="path to model definition file")
     parser.add_argument("--model_def", type=str, default="config/yolov3.cfg", help="path to model definition file")
@@ -116,20 +116,6 @@ if __name__ == "__main__":
     if opt.n_gpu > 1:
       device_ids = list(range(torch.cuda.device_count()))
       model = DataParallel(model, device_ids=device_ids, output_device=None) # nn.parallel.DataParallel(model)
-      # replicas = nn.parallel.replicate(model, device_ids)
-      # for i_gpu, replica in enumerate(replicas):
-      #   # replica.to(torch.device("cuda:{}".format(i)))
-      #   replica.cuda(i_gpu)
-
-      # model = replicas[0]
-      # del model
-      # learnable_params = []
-      # for replica in replicas:
-      #     learnable_params += list(replica.parameters())
-      # learnable_params = list(replicas[0].parameters()) \
-      #                  + list(replicas[1].parameters()) \
-      #                  + list(replicas[2].parameters()) \
-      #                  + list(replicas[3].parameters())
 
     # opt.use_fp16 = False
     # if opt.use_fp16:
@@ -144,9 +130,9 @@ if __name__ == "__main__":
     # else:
     adam_eps = 1e-8
     # if use_opti == 'ranger':
-    # optimizer = Ranger(model.parameters(), lr=init_lr, eps=adam_eps)
+    optimizer = Ranger(model.parameters(), lr=init_lr, eps=adam_eps)
     # if use_opti == 'sgd':
-    optimizer = torch.optim.SGD(model.parameters(), lr=init_lr, nesterov=False)
+    # optimizer = torch.optim.SGD(model.parameters(), lr=init_lr, nesterov=False)
 
     metrics = [
         "grid_size",
@@ -169,15 +155,18 @@ if __name__ == "__main__":
       metrics.pop(metrics.index('y'))
       metrics.pop(metrics.index('z'))
 
+
+
+
+
+
+
+
+
+
     for epoch in range(opt.epochs):
 
-        # if opt.n_gpu > 1:
-        #   for replica in replicas:
-        #       replica.train()
-        # else:
-        #    model.train()
         model.train()
-
         start_time = time.time()
 
         for batch_i, (_, imgs, targets) in enumerate(dataloader):
@@ -198,19 +187,6 @@ if __name__ == "__main__":
             imgs = Variable(imgs.to(device))
             targets = Variable(targets.to(device), requires_grad=False) # [n_bounding_ranges_in_the_batch, 4]
 
-            if opt.n_gpu:
-                # n_coordinates = targets.shape[-1] - 2
-                bs_per_gpu = int( len(imgs) / opt.n_gpu)
-                targets_list = []
-                for i_gpu in range(opt.n_gpu):
-                  targets_for_a_gpu_mask = (bs_per_gpu*i_gpu <= targets[:,0]) & (targets[:,0] < bs_per_gpu*(i_gpu+1))
-                  targets_for_a_gpu = targets[targets_for_a_gpu_mask]
-                  targets_for_a_gpu[:,0] -= bs_per_gpu*i_gpu
-                  targets_list.append({'targets':targets_for_a_gpu.cuda(i_gpu)})
-
-                # targets_reshaped_list = [targets_list[i].reshape(-1) for i in range(opt.n_gpu)]
-                # padded_targets = torch.nn.utils.rnn.pad_sequence(targets_reshaped_list, batch_first=True, padding_value=np.nan)
-                # targets = {'targets':padded_targets}
 
             '''
             # targets.shape[-1]
@@ -248,20 +224,8 @@ if __name__ == "__main__":
             cv2.destroyAllWindows()
             '''
 
-            if opt.n_gpu > 1:
-                scattered_imgs = nn.parallel.scatter(imgs, device_ids)
-                kwargs_tup = tuple(targets_list)
-                # loss, outputs = nn.parallel.parallel_apply(replicas, imgs, kwargs_tup=kwargs_tup)
-                replicas_outputs = model(scattered_imgs, kwargs_tup=kwargs_tup)
-                # replicas_outputs = nn.parallel.parallel_apply(replicas, scattered_imgs, kwargs_tup=kwargs_tup)
-
-                replicas_losses = [replicas_outputs[i_gpu][0] for i_gpu in range(opt.n_gpu)]
-                outputs = np.vstack([replicas_outputs[i_gpu][1] for i_gpu in range(opt.n_gpu)])
-                for loss in replicas_losses:
-                  loss.backward()
-            else:
-              loss, outputs = model(imgs, targets=targets)
-              loss.backward()
+            loss, outputs, got_metrics = model(imgs, targets=targets)
+            loss.backward()
 
             # if opt.use_fp16:
             #   with amp.scale_loss(loss, optimizer) as scaled_loss:
@@ -277,30 +241,40 @@ if __name__ == "__main__":
             # ----------------
             #   Log progress
             # ----------------
-            yolo_layers = model.module.yolo_layers if opt.n_gpu > 1 else model.yolo_layers
-
             log_str = "\n---- [Epoch %d/%d, Batch %d/%d] ----\n" % (epoch, opt.epochs, batch_i, len(dataloader))
 
-            # metric_table = [["Metrics", *[f"YOLO Layer {i}" for i in range(len(model.yolo_layers))]]]
-            metric_table = [["Metrics", *[f"YOLO Layer {i}" for i in range(len(yolo_layers))]]]
+
+            # metric_table = [["Metrics", *[f"YOLO Layer {i}" for i in range(len(model.yolo_layers[0]))]]]
+            metric_table = [["Metrics", *[f"YOLO Layer {i}" for i in range(len(model.yolo_layers[0])) \
+                                                            for i_gpu in range(opt.n_gpu)]]]
+
 
             # Log metrics at each YOLO layer
+            formats = {m: "%.6f" for m in metrics}
+            formats["grid_size"] = "%2d"
+            formats["cls_acc"] = "%.2f%%"
             for i, metric in enumerate(metrics):
-                formats = {m: "%.6f" for m in metrics}
-                formats["grid_size"] = "%2d"
-                formats["cls_acc"] = "%.2f%%"
-                # row_metrics = [formats[metric] % yolo.metrics.get(metric, 0) for yolo in model.yolo_layers]
-                row_metrics = [formats[metric] % yolo.metrics.get(metric, 0) for yolo in yolo_layers]
+                row_metrics = []
+                for i_yolo in range(len(model.yolo_layers[0])):
+                  for i_gpu in range(opt.n_gpu):
+                    yolo_metrics = got_metrics[i_gpu][i_yolo]
+                    row_metrics.append(formats[metric] % yolo_metrics.get(metric, 0))
+
+                # row_metrics = [formats[metric] % yolo.metrics.get(metric, 0) for yolo in model.yolo_layers] # fixme
                 metric_table += [[metric, *row_metrics]]
 
                 # Tensorboard logging
                 tensorboard_log = []
 
                 # for j, yolo in enumerate(model.yolo_layers):
-                for j, yolo in enumerate(yolo_layers):
-                    for name, metric in yolo.metrics.items():
+                for i_yolo in range(len(model.yolo_layers[0])):
+                  for i_gpu in range(opt.n_gpu):
+                    yolo_metrics = got_metrics[i_gpu][i_yolo]
+                    # for name, metric in yolo.metrics.items():
+                    for name, metric in yolo_metrics.items():
                         if name != "grid_size":
-                            tensorboard_log += [(f"{name}_{j+1}", metric)]
+                            # tensorboard_log += [(f"{name}_{j+1}", metric)]
+                            tensorboard_log += [(f"{name}_{i_gpu+1}_{i_yolo+1}", metric)]
                 tensorboard_log += [("loss", loss.item())]
                 logger.list_of_scalars_summary(tensorboard_log, batches_done)
 
@@ -314,13 +288,28 @@ if __name__ == "__main__":
 
             print(log_str)
 
-            # model.seen += imgs.size(0)
-            if opt.n_gpu > 1:
-              model.module.seen += imgs.size(0)
-            else:
-              model.seen += imgs.size(0)
+            model.seen += imgs.size(0)
 
         if epoch % opt.evaluation_interval == 0:
+            '''
+            Detecting objects:   0%|                                                        \
+                                   | 0/625 [00:00<?, ?it/s]
+            Traceback (most recent call last):
+              File "train.py", line 333, in <module>
+                batch_size=8,
+              File "/mnt/md0/yolo/test.py", line 47, in evaluate
+                outputs = model(imgs)
+              File "/home/ywatanabe/envs/py3/lib/python3.6/site-packages/torch/nn/modules/module.py", line 547, in __call__
+                result = self.forward(*input, **kwargs)
+              File "/mnt/md0/yolo/data_parallel.py", line 161, in forward
+                replicas_outputs = self.parallel_apply(replicas, scattered_inputs, kwargs_tup=kwargs_tup)
+              File "/mnt/md0/yolo/data_parallel.py", line 172, in parallel_apply
+                return parallel_apply(replicas, inputs, kwargs_tup=kwargs_tup, devices=self.device_ids[:len(replicas)])
+              File "/home/ywatanabe/envs/py3/lib/python3.6/site-packages/torch/nn/parallel/parallel_apply.py", \
+                   line 37, in parallel_apply
+                assert len(modules) == len(inputs)
+            '''
+
             print("\n---- Evaluating Model ----")
             # Evaluate the model on the validation set
             precision, recall, AP, f1, ap_class = evaluate(
