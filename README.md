@@ -9,16 +9,13 @@ Now, this repository is under developpment.
 # ToDo
 [x] To support 1D inputs
 
-    $ python3 train.py --model_def config/yolov3_1d.cfg
-    (This command line argument including "_1d" leads to load not only the 1D model but also proper functions and data for 1D.)
+    $ python3 train.py --dim 1
 
 [x] To enable multi-GPU support
 
     $ python train.py --n_gpu 4
 
 [ ] To check the value of 2D pretrained weights for 1D model
-
-[ ] To support fp16, or mixed-precision, on training and inference
 
 [ ] To implement the "gaussian" part from the following paper: https://arxiv.org/abs/1904.04620. (To model the predictions of the bounding boxes not as point estimations but as gaussian probabilities)
 
@@ -28,7 +25,7 @@ Now, this repository is under developpment.
 1) CRCNS hc-19 (http://crcns.org/data-sets/hc/hc-19/about-hc-19)
 2) The Spoken Wikipedia Corpora (http://nats.gitlab.io/swc/)
 
-
+[ ] To support fp16, or mixed-precision, on training and inference
 
 ---
 (Documentation below was excerpted from the original repository and is about 2D YOLO v3)
