@@ -24,42 +24,35 @@ import torch.optim as optim
 from optimizers import Ranger
 from data_parallel import DataParallel
 
+from models import *
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--epochs", type=int, default=100, help="number of epochs")
-    parser.add_argument("--batch_size", type=int, default=10, help="size of each image batch") # 512
-    parser.add_argument("--gradient_accumulations", type=int, default=2, help="number of gradient accums before step")
-    # parser.add_argument("--model_def", type=str, default="config/yolov3_1d.cfg", help="path to model definition file")
     parser.add_argument("--model_def", type=str, default="config/yolov3.cfg", help="path to model definition file")
+    parser.add_argument("--epochs", type=int, default=100, help="number of epochs")
+    parser.add_argument("--batch_size", type=int, default=10, help="size of each image batch")
+    parser.add_argument("--gradient_accumulations", type=int, default=2, help="number of gradient accums before step")
     parser.add_argument("--data_config", type=str, default="config/coco.data", help="path to data config file")
-    parser.add_argument("--pretrained_weights", type=str, help="if specified starts from checkpoint model")
+    parser.add_argument("--pretrained_weights", default='weights/yolov3.weights', \
+                        type=str, help="if specified starts from checkpoint model")
+                        # weights/darknet53.conv.74 # pretrained on ImageNet
     parser.add_argument("--n_cpu", type=int, default=20, help="number of cpu threads to use during batch generation")
-    parser.add_argument("--n_gpu", type=int, default=4, help="number of GPUs to use")
-    parser.add_argument("--use_fp16", action='store_true', help=" ")
+    parser.add_argument("--n_gpu", type=int, default=0, help="number of GPUs to use")
     parser.add_argument("--input_len", type=int, default=416, help="size of each image dimension")
     parser.add_argument("--checkpoint_interval", type=int, default=1, help="interval between saving model weights")
     parser.add_argument("--evaluation_interval", type=int, default=1, help="interval evaluations on validation set")
     parser.add_argument("--compute_map", default=False, help="if True computes mAP every tenth batch")
     parser.add_argument("--multiscale_training", default=True, help="allow for multi-scale training")
+    parser.add_argument("--dim", choices=[0,1], default=2, type=int, help=" ")
+    parser.add_argument("--use_gauss", action='store_true', help=" ")
     opt = parser.parse_args()
     print(opt)
-    use_opti = 'ranger'
-    init_lr = 1e-3
 
-    # Switches dimensions
-    if '1d' in opt.model_def: # 1D
-      dim = 1; from models_1d import *
-    else: # 2D
-      dim = 2; from models import *
-
+    # Prepare fundamentals
     logger = Logger("logs")
-
     device = torch.device("cuda" if opt.n_gpu else "cpu")
-
-    opt.batch_size *= opt.n_gpu
     print('n_GPUs: {}'.format(opt.n_gpu))
-
+    print('Batch Size: {}'.format(opt.batch_size))
     os.makedirs("output", exist_ok=True)
     os.makedirs("checkpoints", exist_ok=True)
 
@@ -70,25 +63,58 @@ if __name__ == "__main__":
     class_names = load_classes(data_config["names"])
 
     # Initiate model
-    model = Darknet(opt.model_def).to(device)
+    model = Darknet(opt.model_def, dim=opt.dim, use_gauss=opt.use_gauss).to(device)
     model.apply(weights_init_normal)
-    learnable_params = model.parameters()
 
     '''
-    ## Model Confirmation with dummy mini-batch input
-
+    ## Checks model with dummy input
     # Note: Pytorch Default is [B, C, "H", "W"]
 
-    if dim == 2: ## 2D
+    if opt.dim == 2: ## 2D
       B, C, W, H = opt.batch_size, 3, 416, 416
       inp = torch.rand((B, C, W, H), dtype=torch.float).to(device)
 
-    elif dim == 1: ## 1D
+    elif opt.dim == 1: ## 1D
       B, C, W, H = opt.batch_size, 1, 416, 1
       inp = torch.rand((B, C, W), dtype=torch.float).to(device)
 
     out = model(inp)
     print(out)
+    '''
+    '''
+    model_1d = Darknet(opt.model_def, dim=1)
+    # Print learnable parameters
+    names_1d = []
+    params_1d = []
+    params_1d_shape = []
+    for name, param in model_1d.named_parameters():
+        if param.requires_grad:
+            # print(name, param.data)
+            names_1d.append(name)
+            params_1d.append(param.data)
+            params_1d_shape.append(param.data.shape)
+
+    model_2d = Darknet(opt.model_def, dim=2)
+    # Print learnable parameters
+    names_2d = []
+    params_2d = []
+    params_2d_shape = []
+    for name, param in model_2d.named_parameters():
+        if param.requires_grad:
+            # print(name, param.data)
+            names_2d.append(name)
+            params_2d.append(param.data)
+            params_2d_shape.append(param.data.shape)
+
+    np.array(names_1d) == np.array(names_2d)
+
+    for i in range(len(params_2d_shape)):
+      # print(params_2d_shape[i], params_1d_shape[i])
+      if len(params_2d_shape[i]) == 4:
+        issame = (params_2d[i].mean(dim=-1).shape == params_1d_shape[i])
+        if not issame:
+          print(names_2d[i])
+
     '''
 
     # If specified we start from checkpoint
@@ -97,6 +123,15 @@ if __name__ == "__main__":
             model.load_state_dict(torch.load(opt.pretrained_weights))
         else:
             model.load_darknet_weights(opt.pretrained_weights)
+
+    # Print learnable parameters
+    learnable_param_names = []
+    for name, param in model.named_parameters():
+        if param.requires_grad:
+            # print(name, param.data)
+            learnable_param_names.append(name)
+
+
 
     # Get dataloader
     dataset = ListDataset(train_path, augment=True, multiscale=opt.multiscale_training)
@@ -114,56 +149,13 @@ if __name__ == "__main__":
 
     # Replicate Model if n_GPUs > 1
     if opt.n_gpu > 1:
+      opt.batch_size *= opt.n_gpu
       device_ids = list(range(torch.cuda.device_count()))
-      model = DataParallel(model, device_ids=device_ids, output_device=None) # nn.parallel.DataParallel(model)
+      model = DataParallel(model, device_ids=device_ids, output_device=None)
 
-    # opt.use_fp16 = False
-    # if opt.use_fp16:
-    #   from apex import amp
-    #   adam_eps = 1e-4
-    #   if use_opti == 'ranger':
-    #     optimizer = Ranger(model.parameters(), lr=init_lr, eps=adam_eps)
-    #   if use_opti == 'sgd':
-    #     optimizer = torch.optim.SGD(model.parameters(), lr=init_lr, nesterov=False)
-    #   amp.register_float_function(torch, 'sigmoid')
-    #   model, optimizer = amp.initialize(model, optimizer, opt_level="O1", num_losses=1)
-    # else:
-    adam_eps = 1e-8
-    # if use_opti == 'ranger':
-    optimizer = Ranger(model.parameters(), lr=init_lr, eps=adam_eps)
-    # if use_opti == 'sgd':
-    # optimizer = torch.optim.SGD(model.parameters(), lr=init_lr, nesterov=False)
+    optimizer = Ranger(model.parameters(), lr=1e-3, eps=1e-8)
 
-    metrics = [
-        "grid_size",
-        "loss",
-        "x",
-        "y",
-        "w",
-        "z",
-        "conf",
-        "cls",
-        "cls_acc",
-        "recall50",
-        "recall75",
-        "precision",
-        "conf_obj",
-        "conf_noobj",
-    ]
-
-    if dim == 1:
-      metrics.pop(metrics.index('y'))
-      metrics.pop(metrics.index('z'))
-
-
-
-
-
-
-
-
-
-
+    ## Main Loop
     for epoch in range(opt.epochs):
 
         model.train()
@@ -178,7 +170,7 @@ if __name__ == "__main__":
 
             batches_done = len(dataloader) * epoch + batch_i
 
-            if dim == 1:
+            if opt.dim == 1:
               imgs = imgs.mean(axis=1).unsqueeze(1) # Convert RGB to Gray, [b, c, h, w]
               imgs = imgs.mean(axis=2) # Compress the Y dimension
               targets = targets[:, [0, 1, 2, 4]] # Exclude CentreY and Width
@@ -186,7 +178,6 @@ if __name__ == "__main__":
 
             imgs = Variable(imgs.to(device))
             targets = Variable(targets.to(device), requires_grad=False) # [n_bounding_ranges_in_the_batch, 4]
-
 
             '''
             # targets.shape[-1]
@@ -224,57 +215,40 @@ if __name__ == "__main__":
             cv2.destroyAllWindows()
             '''
 
-            loss, outputs, got_metrics = model(imgs, targets=targets)
+            loss, outputs, metrics = model(imgs, targets=targets)
             loss.backward()
-
-            # if opt.use_fp16:
-            #   with amp.scale_loss(loss, optimizer) as scaled_loss:
-            #     scaled_loss.backward()
-            # else:
-            #   loss.backward()
 
             if batches_done % opt.gradient_accumulations:
                 # Accumulates gradient before each step
                 optimizer.step()
                 optimizer.zero_grad()
 
-            # ----------------
-            #   Log progress
-            # ----------------
+            # ---------------- #
+            #   Log progress   #
+            # ---------------- #
             log_str = "\n---- [Epoch %d/%d, Batch %d/%d] ----\n" % (epoch, opt.epochs, batch_i, len(dataloader))
 
-
-            # metric_table = [["Metrics", *[f"YOLO Layer {i}" for i in range(len(model.yolo_layers[0]))]]]
-            metric_table = [["Metrics", *[f"YOLO Layer {i}" for i in range(len(model.yolo_layers[0])) \
-                                                            for i_gpu in range(opt.n_gpu)]]]
-
-
+            metric_table = [["Metrics", *[f"YOLO Layer {i}" for i in range(len(model.yolo_layers[0]))]]]
             # Log metrics at each YOLO layer
-            formats = {m: "%.6f" for m in metrics}
+            metrics_keys =  list(metrics[0].keys())
+            formats = {m: "%.6f" for m in metrics_keys} # list[metrics.keys()]
             formats["grid_size"] = "%2d"
             formats["cls_acc"] = "%.2f%%"
-            for i, metric in enumerate(metrics):
+            for i, metric in enumerate(metrics_keys):
                 row_metrics = []
                 for i_yolo in range(len(model.yolo_layers[0])):
-                  for i_gpu in range(opt.n_gpu):
-                    yolo_metrics = got_metrics[i_gpu][i_yolo]
+                    yolo_metrics = metrics[i_yolo]
                     row_metrics.append(formats[metric] % yolo_metrics.get(metric, 0))
-
-                # row_metrics = [formats[metric] % yolo.metrics.get(metric, 0) for yolo in model.yolo_layers] # fixme
                 metric_table += [[metric, *row_metrics]]
 
                 # Tensorboard logging
                 tensorboard_log = []
 
-                # for j, yolo in enumerate(model.yolo_layers):
                 for i_yolo in range(len(model.yolo_layers[0])):
-                  for i_gpu in range(opt.n_gpu):
-                    yolo_metrics = got_metrics[i_gpu][i_yolo]
-                    # for name, metric in yolo.metrics.items():
+                    yolo_metrics = metrics[i_yolo]
                     for name, metric in yolo_metrics.items():
                         if name != "grid_size":
-                            # tensorboard_log += [(f"{name}_{j+1}", metric)]
-                            tensorboard_log += [(f"{name}_{i_gpu+1}_{i_yolo+1}", metric)]
+                            tensorboard_log += [(f"{name}_{i_yolo+1}", metric)]
                 tensorboard_log += [("loss", loss.item())]
                 logger.list_of_scalars_summary(tensorboard_log, batches_done)
 
@@ -291,24 +265,6 @@ if __name__ == "__main__":
             model.seen += imgs.size(0)
 
         if epoch % opt.evaluation_interval == 0:
-            '''
-            Detecting objects:   0%|                                                        \
-                                   | 0/625 [00:00<?, ?it/s]
-            Traceback (most recent call last):
-              File "train.py", line 333, in <module>
-                batch_size=8,
-              File "/mnt/md0/yolo/test.py", line 47, in evaluate
-                outputs = model(imgs)
-              File "/home/ywatanabe/envs/py3/lib/python3.6/site-packages/torch/nn/modules/module.py", line 547, in __call__
-                result = self.forward(*input, **kwargs)
-              File "/mnt/md0/yolo/data_parallel.py", line 161, in forward
-                replicas_outputs = self.parallel_apply(replicas, scattered_inputs, kwargs_tup=kwargs_tup)
-              File "/mnt/md0/yolo/data_parallel.py", line 172, in parallel_apply
-                return parallel_apply(replicas, inputs, kwargs_tup=kwargs_tup, devices=self.device_ids[:len(replicas)])
-              File "/home/ywatanabe/envs/py3/lib/python3.6/site-packages/torch/nn/parallel/parallel_apply.py", \
-                   line 37, in parallel_apply
-                assert len(modules) == len(inputs)
-            '''
 
             print("\n---- Evaluating Model ----")
             # Evaluate the model on the validation set
@@ -316,11 +272,13 @@ if __name__ == "__main__":
                 model,
                 path=valid_path,
                 iou_thres=0.5,
-                conf_thres=0.5,
+                conf_thres=0.001,
                 nms_thres=0.5,
                 img_size=opt.input_len,
                 batch_size=8,
+                dim=opt.dim,
             )
+
             evaluation_metrics = [
                 ("val_precision", precision.mean()),
                 ("val_recall", recall.mean()),
