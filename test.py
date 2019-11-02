@@ -1,7 +1,9 @@
 from __future__ import division
 
 from models import *
+# from models import Darknet
 from utils.utils import *
+# from utils.utils import xywh2xyxy, non_max_suppression
 from utils.datasets import *
 from utils.parse_config import *
 
@@ -20,7 +22,7 @@ from torch.autograd import Variable
 import torch.optim as optim
 
 
-def evaluate(model, path, iou_thres, conf_thres, nms_thres, img_size, batch_size):
+def evaluate(model, path, iou_thres, conf_thres, nms_thres, img_size, batch_size, dim=2):
     model.eval()
 
     # Get dataloader
@@ -45,7 +47,7 @@ def evaluate(model, path, iou_thres, conf_thres, nms_thres, img_size, batch_size
 
         with torch.no_grad():
             outputs = model(imgs)
-            outputs = non_max_suppression(outputs, conf_thres=conf_thres, nms_thres=nms_thres)
+            outputs = non_max_suppression(outputs, conf_thres=conf_thres, nms_thres=nms_thres) # fixme
 
         sample_metrics += get_batch_statistics(outputs, targets, iou_threshold=iou_thres)
 
