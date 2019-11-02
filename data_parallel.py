@@ -2,10 +2,6 @@ import operator
 import torch
 import warnings
 from itertools import chain
-# from ..modules import Module
-# from .scatter_gather import scatter_kwargs, gather
-# from .replicate import replicate
-# from .parallel_apply import parallel_apply
 from torch.nn.modules import Module
 from torch.nn.parallel.scatter_gather import scatter, gather # scatter_kwargs
 from torch.nn.parallel.replicate import replicate
@@ -13,8 +9,16 @@ from torch.nn.parallel.parallel_apply import parallel_apply
 from torch.cuda._utils import _get_device_index
 
 import numpy as np
-# torch.nn.parallel.data_parallel
-# torch.nn.parallel.data_parallel.DataParallel
+
+def init_dict(keys=None, values=None):
+  dict = {}
+  if values is None:
+    values = [0 for _ in range(len(keys))]
+  if keys is not None:
+    for i, k in enumerate(keys):
+      dict[k] = values[i]
+  return dict
+
 
 def _check_balance(device_ids):
     imbalance_warn = """
@@ -187,11 +191,25 @@ class DataParallel(Module):
         if not targets is None:
           replicas_losses = [replicas_outputs[i_device][0] for i_device in range(self.n_device)]
           loss_tot = self.gather(replicas_losses, self.output_device).mean()
-          outputs = np.vstack([replicas_outputs[i_device][1] for i_device in range(self.n_device)])
+          outputs = torch.tensor(np.vstack([replicas_outputs[i_device][1] for i_device in range(self.n_device)]))
           metrics = [replicas_outputs[i_device][2] for i_device in range(self.n_device)]
-          return loss_tot, outputs, metrics
+
+          keys = list(metrics[0][0].keys())
+          metrics_formatted = [init_dict(keys) for _ in range(len(self.yolo_layers[0]))]
+          for i_yolo in range(len(self.yolo_layers[0])):
+            for i_device in range(self.n_device):
+              yolo_metrics = metrics[i_device][i_yolo]
+              for k in keys:
+                metrics_formatted[i_yolo][k] += yolo_metrics[k]
+
+          for i_yolo in range(len(self.yolo_layers[0])):
+            for k in keys:
+              metrics_formatted[i_yolo][k] /= self.n_device
+
+          return loss_tot, outputs, metrics_formatted
         else:
-          outputs = np.vstack([replicas_outputs[i_device][0] for i_device in range(self.n_device)])
+
+          outputs = torch.tensor(np.vstack([replicas_outputs[i_device] for i_device in range(self.n_device)]))
           return outputs
 
     def replicate(self, module, device_ids):
