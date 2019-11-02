@@ -128,6 +128,20 @@ Track training progress in Tensorboard:
 $ tensorboard --logdir='logs' --port=6006
 ```
 
+for over ssh use case,
+```
+(server) $ tensorboard --logdir='logs' --port=6006
+(client) $ ssh -L -f 9009:localhost:6006 user@server.host.name
+```
+You might want to configure above setting on client's ~/.ssh/config file like this
+```
+Host <NAME>
+HostName <server.host.name>
+User <user>
+Port 9009
+LocalForward 9009 127.0.0.1:6006
+```
+
 ## Train on Custom Dataset
 
 #### Custom model
