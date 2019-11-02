@@ -1,26 +1,28 @@
 # PyTorch-gaussian-YOLOv3-1D
 This reopsitory was forked from https://github.com/eriklindernoren/PyTorch-YOLOv3 and is based on that repo; however, this one mainly aims the following three parts.
-1) Adding 1D support as an event detection system in a supervised manner, like object detection in 2D 
-2) Enabling multi-gpu support
-3) Utilizing the prediction uncertainities of the Bounding Boxes (for 2D) or Bouning Ranges (for 1D) as described in this paper: https://arxiv.org/abs/1904.04620
+1) To support 1D-vector inputs as an event detection system, just like 2D-image inputs as in object detection 
+2) To utilize multiple GPUs
+3) To take account of the prediction uncertainities of the Bounding Boxes (for 2D) or the Bouning Ranges (for 1D) as described in the following paper: https://arxiv.org/abs/1904.04620
 
 Now, this repository is under developpment.
 
 # ToDo
-[x] 1D support
+[x] To support 1D inputs
 
     $ python3 train.py --model_def config/yolov3_1d.cfg
     (This command line argument including "_1d" leads to load not only the 1D model but also proper functions and data for 1D.)
 
-[x] Enabling multi-GPU support
+[x] To enable multi-GPU support
 
     $ python train.py --n_gpu 4
 
-[ ] Enabling fp16 support
+[ ] To check the value of 2D pretrained weights for 1D model
 
-[ ] Adding the "gaussian" part from the following paper: https://arxiv.org/abs/1904.04620.
+[ ] To support fp16, or mixed-precision, on training and inference
 
-[ ] Introducing another dataset appropriate for 1D event detection
+[ ] To implement the "gaussian" part from the following paper: https://arxiv.org/abs/1904.04620. (To model the predictions of the bounding boxes not as point estimations but as gaussian probabilities)
+
+[ ] To introduce other datasets, which are appropriate for 1D event detection
 
 - 1D dataset candidates
 1) CRCNS hc-19 (http://crcns.org/data-sets/hc/hc-19/about-hc-19)
