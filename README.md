@@ -1,9 +1,8 @@
 # PyTorch-gaussian-YOLOv3-1D
-This reopsitory was forked from https://github.com/eriklindernoren/PyTorch-YOLOv3 and is based on that repo; however, this one mainly aims the following three parts.
+This reopsitory was forked from https://github.com/eriklindernoren/PyTorch-YOLOv3 and is based on that repo; however, this one mainly aims the following three parts.  
 1) To support 1D-vector inputs as an event detection system, just like 2D-image inputs as in object detection 
 2) To utilize multiple GPUs
-3) To take account of the prediction uncertainities of the Bounding Boxes (for 2D) or the Bouning Ranges (for 1D) as described in the following paper: https://arxiv.org/abs/1904.04620
-
+3) To take account of the prediction uncertainities of the Bounding Boxes (for 2D) or the Bouning Ranges (for 1D) as described in the following paper: https://arxiv.org/abs/1904.04620  
 Now, this repository is under developpment.
 
 # ToDo
@@ -15,10 +14,11 @@ Now, this repository is under developpment.
 
     $ python train.py --n_gpu 4
 
-[△] To check the value of 2D pretrained weights for 1D model (Transfer Learning / Fine Tuning) \\
+[△] To check the value of 2D pretrained weights for 1D model (Transfer Learning / Fine Tuning)  
     Implementation was done. However, the efficacy is dubious at this point.
 
-[ ] To implement the "gaussian" part from the following paper: https://arxiv.org/abs/1904.04620. (To model the predictions of the bounding boxes not as point estimations but as gaussian probabilities)
+[ ] To implement the "gaussian" part from the following paper: https://arxiv.org/abs/1904.04620.  
+   (= To model the predictions of the bounding boxes not as point estimations but as gaussian probabilities)
 
 [ ] To introduce other datasets, which are appropriate for 1D event detection
 
