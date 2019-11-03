@@ -15,7 +15,7 @@ Now, this repository is under developpment.
 
     $ python train.py --n_gpu 4
 
-[△] To check the value of 2D pretrained weights for 1D model (Transfer Learning / Fine Tuning)\n
+[△] To check the value of 2D pretrained weights for 1D model (Transfer Learning / Fine Tuning) \\
     Implementation was done. However, the efficacy is dubious at this point.
 
 [ ] To implement the "gaussian" part from the following paper: https://arxiv.org/abs/1904.04620. (To model the predictions of the bounding boxes not as point estimations but as gaussian probabilities)
