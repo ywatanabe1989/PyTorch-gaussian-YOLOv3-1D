@@ -14,7 +14,7 @@ Now, this repository is under developpment.
 
     $ python train.py --n_gpu 4
 
-[△] To check the value of 2D pretrained weights for 1D model (Transfer Learning / Fine Tuning)  
+[△] To check the effectiveness of 2D pretrained weights for 1D model (Transfer Learning / Fine Tuning)  
     The implementation was done. However, the efficacy is dubious at this point. This may be caused by the poor evaluation system now or by the corruption of the initialized weights at the very beginning period of iterations with relatively high learning rate. 
 
 [ ] To implement the "gaussian" part as described in the following paper: https://arxiv.org/abs/1904.04620.  
