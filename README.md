@@ -2,7 +2,7 @@
 This reopsitory was forked from https://github.com/eriklindernoren/PyTorch-YOLOv3 and is based on that repo; however, this one mainly aims the following three parts.  
 1) To support 1D-vector inputs as an event detection system, just like 2D-image inputs as in object detection 
 2) To utilize multiple GPUs
-3) To take account of the prediction uncertainities of the Bounding Boxes (for 2D) or the Bouning Ranges (for 1D) as described in the following paper: https://arxiv.org/abs/1904.04620  
+3) To take account of the prediction uncertainities of the Bounding Boxes (for 2D) or the Bouning Ranges (for 1D) as described in this paper: https://arxiv.org/abs/1904.04620  
 Now, this repository is under developpment.
 
 # ToDo
