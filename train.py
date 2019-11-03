@@ -35,7 +35,8 @@ if __name__ == "__main__":
     parser.add_argument("--data_config", type=str, default="config/coco.data", help="path to data config file")
     parser.add_argument("--pretrained_weights", default='weights/yolov3.weights', \
                         type=str, help="if specified starts from checkpoint model")
-                        # weights/darknet53.conv.74 # pretrained on ImageNet
+    # parser.add_argument("--pretrained_weights", default='weights/darknet53.conv.74', \
+    #                     type=str, help="if specified starts from checkpoint model") # pretrained on ImageNet
     parser.add_argument("--n_cpu", type=int, default=20, help="number of cpu threads to use during batch generation")
     parser.add_argument("--n_gpu", type=int, default=0, help="number of GPUs to use")
     parser.add_argument("--input_len", type=int, default=416, help="size of each image dimension")
@@ -43,7 +44,7 @@ if __name__ == "__main__":
     parser.add_argument("--evaluation_interval", type=int, default=1, help="interval evaluations on validation set")
     parser.add_argument("--compute_map", default=False, help="if True computes mAP every tenth batch")
     parser.add_argument("--multiscale_training", default=True, help="allow for multi-scale training")
-    parser.add_argument("--dim", choices=[0,1], default=2, type=int, help=" ")
+    parser.add_argument("--dim", choices=[0,1], default=1, type=int, help=" ")
     parser.add_argument("--use_gauss", action='store_true', help=" ")
     opt = parser.parse_args()
     print(opt)
@@ -65,6 +66,67 @@ if __name__ == "__main__":
     # Initiate model
     model = Darknet(opt.model_def, dim=opt.dim, use_gauss=opt.use_gauss).to(device)
     model.apply(weights_init_normal)
+
+    # Get learnable parameters
+    learnable_param_names = []
+    for name, param in model.named_parameters():
+        if param.requires_grad:
+            # print(name, param.data)
+            learnable_param_names.append(name)
+
+    # If specified we start from checkpoint
+    if opt.pretrained_weights:
+        if opt.dim == 2:
+          if opt.pretrained_weights.endswith(".pth"):
+              model.load_state_dict(torch.load(opt.pretrained_weights))
+          else:
+              model.load_darknet_weights(opt.pretrained_weights)
+
+        if opt.dim == 1: # model is 1D
+          _model = Darknet(opt.model_def, dim=2, use_gauss=opt.use_gauss).to(device) # _model is 2D
+          if opt.pretrained_weights.endswith(".pth"):
+              _model.load_state_dict(torch.load(opt.pretrained_weights))
+          else:
+              _model.load_darknet_weights(opt.pretrained_weights)
+
+          # Convert 2D pretrained weights to 1D with mean
+          params_2d = _model.state_dict()
+          params_1d = model.state_dict()
+          size_error = 0
+          errored_names = []
+          substitusion = 0
+          for i, name in enumerate(learnable_param_names):
+              param_2d = params_2d[name] # torch.Tensor
+              param_1d = model.state_dict()[name] # torch.Tensor
+              # Convert 2D weight to 1D
+              if len(param_2d.shape) == len(param_1d.shape) + 1:
+                  param_2d = param_2d.mean(dim=-1)
+                  if param_2d.shape[1] == 3 and param_1d.shape[1] == 1: # the 1st layer for the channel difference
+                      param_2d = param_2d.mean(dim=1).unsqueeze(1)
+                  if param_2d.shape == param_1d.shape:
+                      params_1d[name] = param_2d
+                      substitusion += 1
+                  else:
+                      size_error += 1
+                      errored_names.append(name) # YOLO Layers' weights are not inherited because of the num_classes difference.
+
+          model.load_state_dict(params_1d)
+
+          '''
+          # Dry-run for checking
+          for i, name in enumerate(learnable_param_names):
+              param_2d = params_2d[name] # torch.Tensor
+              param_1d = model.state_dict()[name] # torch.Tensor
+              # Convert 2D weight to 1D
+              if len(param_2d.shape) == len(param_1d.shape) + 1:
+                  param_2d = param_2d.mean(dim=-1)
+                  if param_2d.shape[1] == 3 and param_1d.shape[1] == 1: # the 1st layer for the channel difference
+                      param_2d = param_2d.mean(dim=1).unsqueeze(1)
+                  if param_2d.shape == param_1d.shape:
+                      print(model.state_dict()[name] == param_2d)
+                  else:
+                      pass
+          '''
 
     '''
     ## Checks model with dummy input
@@ -116,22 +178,6 @@ if __name__ == "__main__":
           print(names_2d[i])
 
     '''
-
-    # If specified we start from checkpoint
-    if opt.pretrained_weights:
-        if opt.pretrained_weights.endswith(".pth"):
-            model.load_state_dict(torch.load(opt.pretrained_weights))
-        else:
-            model.load_darknet_weights(opt.pretrained_weights)
-
-    # Print learnable parameters
-    learnable_param_names = []
-    for name, param in model.named_parameters():
-        if param.requires_grad:
-            # print(name, param.data)
-            learnable_param_names.append(name)
-
-
 
     # Get dataloader
     dataset = ListDataset(train_path, augment=True, multiscale=opt.multiscale_training)
@@ -228,15 +274,16 @@ if __name__ == "__main__":
             # ---------------- #
             log_str = "\n---- [Epoch %d/%d, Batch %d/%d] ----\n" % (epoch, opt.epochs, batch_i, len(dataloader))
 
-            metric_table = [["Metrics", *[f"YOLO Layer {i}" for i in range(len(model.yolo_layers[0]))]]]
+            # metric_table = [["Metrics", *[f"YOLO Layer {i}" for i in range(len(model.yolo_layers[0]))]]]
+            metric_table = [["Metrics", *[f"YOLO Layer {i}" for i in range(len(model.yolo_layers))]]]
             # Log metrics at each YOLO layer
             metrics_keys =  list(metrics[0].keys())
-            formats = {m: "%.6f" for m in metrics_keys} # list[metrics.keys()]
+            formats = {m: "%.6f" for m in metrics_keys}
             formats["grid_size"] = "%2d"
             formats["cls_acc"] = "%.2f%%"
             for i, metric in enumerate(metrics_keys):
                 row_metrics = []
-                for i_yolo in range(len(model.yolo_layers[0])):
+                for i_yolo in range(len(model.yolo_layers)):
                     yolo_metrics = metrics[i_yolo]
                     row_metrics.append(formats[metric] % yolo_metrics.get(metric, 0))
                 metric_table += [[metric, *row_metrics]]
@@ -244,7 +291,7 @@ if __name__ == "__main__":
                 # Tensorboard logging
                 tensorboard_log = []
 
-                for i_yolo in range(len(model.yolo_layers[0])):
+                for i_yolo in range(len(model.yolo_layers)):
                     yolo_metrics = metrics[i_yolo]
                     for name, metric in yolo_metrics.items():
                         if name != "grid_size":
