@@ -59,10 +59,10 @@ def xywh2xyxy(x):
     return y
 
 
-def xwh2xx(x): # for 1D
+def xw2xx(x): # for 1D
     y = x.new(x.shape)
     y[..., 0] = x[..., 0] - x[..., 1] / 2
-    y[..., 2] = x[..., 0] + x[..., 1] / 2
+    y[..., 1] = x[..., 0] + x[..., 1] / 2
     return y
 
 
@@ -188,6 +188,47 @@ def get_batch_statistics(outputs, targets, iou_threshold):
     return batch_metrics
 
 
+def get_batch_statistics_1D(outputs, targets, iou_threshold):
+    """ Compute true positives, predicted scores and predicted labels per sample """
+    batch_metrics = []
+    for sample_i in range(len(outputs)):
+
+        if outputs[sample_i] is None:
+            continue
+
+        output = outputs[sample_i]
+        pred_boxes = output[:, :2]
+        pred_scores = output[:, 2]
+        pred_labels = output[:, -1]
+
+        true_positives = np.zeros(pred_boxes.shape[0])
+
+        annotations = targets[targets[:, 0] == sample_i][:, 1:]
+        target_labels = annotations[:, 0] if len(annotations) else []
+        if len(annotations):
+            detected_boxes = []
+            target_boxes = annotations[:, 1:]
+
+            for pred_i, (pred_box, pred_label) in enumerate(zip(pred_boxes, pred_labels)):
+
+                # If targets are found break
+                if len(detected_boxes) == len(annotations):
+                    break
+
+                # Ignore if label is not one of the target labels
+                if pred_label not in target_labels:
+                    continue
+
+                # iou, box_index = bbox_iou(pred_box.unsqueeze(0), target_boxes).max(0)
+                iou, box_index = bounding_ranges_iou(pred_box.unsqueeze(0), target_boxes).max(0)
+                if iou >= iou_threshold and box_index not in detected_boxes:
+                    true_positives[pred_i] = 1
+                    detected_boxes += [box_index]
+        batch_metrics.append([true_positives, pred_scores, pred_labels])
+    return batch_metrics
+
+
+
 def bbox_wh_iou(wh1, wh2):
     wh2 = wh2.t()
     w1, h1 = wh1[0], wh1[1]
@@ -266,7 +307,7 @@ def bounding_ranges_iou(range1, range2, x1x2=True):
     return iou
 
 
-def non_max_suppression(prediction, conf_thres=0.5, nms_thres=0.4):
+def non_max_suppression(prediction, conf_thres=0.5, nms_thres=0.4): # for 2D
     """
     Removes detections with lower object confidence score than 'conf_thres' and performs
     Non-Maximum Suppression to further filter detections.
@@ -305,6 +346,49 @@ def non_max_suppression(prediction, conf_thres=0.5, nms_thres=0.4):
             output[image_i] = torch.stack(keep_boxes)
 
     return output
+
+
+def non_max_suppression_1D(prediction, conf_thres=0.5, nms_thres=0.4): # for 1D, fixme
+    """
+    Removes detections with lower object confidence score than 'conf_thres' and performs
+    Non-Maximum Suppression to further filter detections.
+    Returns detections with shape:
+        (x1, y1, x2, y2, object_conf, class_score, class_pred)
+    """
+
+    # From (center x, center y, width, height) to (x1, y1, x2, y2)
+    prediction[..., :2] = xw2xx(prediction[..., :2])
+    output = [None for _ in range(len(prediction))]
+    for image_i, image_pred in enumerate(prediction):
+        # Filter out confidence scores below threshold
+        image_pred = image_pred[image_pred[:, 2] >= conf_thres]
+        # If none are remaining => process next image
+        if not image_pred.size(0):
+            continue
+        # Object confidence times class confidence
+        score = image_pred[:, 2] * image_pred[:, 3:].max(1)[0]
+        # Sort by it
+        image_pred = image_pred[(-score).argsort()]
+        class_confs, class_preds = image_pred[:, 3:].max(1, keepdim=True)
+        detections = torch.cat((image_pred[:, :3], class_confs.float(), class_preds.float()), 1)
+        # Perform non-maximum suppression
+        keep_boxes = []
+        while detections.size(0):
+            # large_overlap = bbox_iou(detections[0, :2].unsqueeze(0), detections[:, :2]) > nms_thres
+            large_overlap = bounding_ranges_iou(detections[0, :2].unsqueeze(0), detections[:, :2]) > nms_thres
+            label_match = detections[0, -1] == detections[:, -1]
+            # Indices of boxes with lower confidence scores, large IOUs and matching labels
+            invalid = large_overlap & label_match
+            weights = detections[invalid, 2:3]
+            # Merge overlapping bboxes by order of confidence
+            detections[0, :2] = (weights * detections[invalid, :2]).sum(0) / weights.sum()
+            keep_boxes += [detections[0]]
+            detections = detections[~invalid]
+        if keep_boxes:
+            output[image_i] = torch.stack(keep_boxes)
+
+    return output
+
 
 
 def build_targets(pred_boxes, pred_cls, target, anchors, ignore_thres, dim=2):
