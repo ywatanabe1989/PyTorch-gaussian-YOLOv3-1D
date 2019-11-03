@@ -17,7 +17,7 @@ Now, this repository is under developpment.
 [△] To check the value of 2D pretrained weights for 1D model (Transfer Learning / Fine Tuning)  
     Implementation was done. However, the efficacy is dubious at this point.
 
-[ ] To implement the "gaussian" part from the following paper: https://arxiv.org/abs/1904.04620.  
+[ ] To implement the "gaussian" part as described in the following paper: https://arxiv.org/abs/1904.04620.  
    (= To model the predictions of the bounding boxes not as point estimations but as gaussian probabilities)
 
 [ ] To introduce other datasets, which are appropriate for 1D event detection
